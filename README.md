@@ -16,7 +16,7 @@ Settings → Community plugins → Obsidian AI LLM Helper
 
 ## Use
 
-- Command Palette: **Obsidian AI LLM Helper: Ask AI…** (default hotkey: Cmd/Ctrl+Shift+A)
+- Select text and use default hotkey: Cmd/Ctrl+Shift+A) or right click and select "AI LLM Helper: Ask AI…"
 - Type a short instruction; Enter key submits.
 - Undo any change with Cmd/Ctrl+Z as normal.
 
