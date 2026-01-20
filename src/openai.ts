@@ -139,6 +139,10 @@ function isLocalUrl(url: string): boolean {
   }
 }
 
+function hasUrl(value: unknown): value is { url: string } {
+  return typeof value === "object" && value !== null && "url" in value && typeof (value as { url?: unknown }).url === "string";
+}
+
 function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
   const key = apiKey?.trim();
   return new OpenAI({
@@ -146,13 +150,22 @@ function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
     baseURL,
     dangerouslyAllowBrowser: true,
     fetch: async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
-      const headersObj = new Headers(init?.headers ?? {});
-      const headers: Record<string, string> = {};
-      headersObj.forEach((v, k) => {
-        headers[k] = v;
-      });
-      const body = (init?.body as string | ArrayBuffer | ArrayBufferView | FormData | null | undefined) ?? undefined;
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input instanceof Request
+              ? input.url
+              : hasUrl(input)
+                ? input.url
+                : "";
+  const headersObj = new Headers(init?.headers ?? {});
+  const headers: Record<string, string> = {};
+  headersObj.forEach((v, k) => {
+    headers[k] = v;
+  });
+  const body = init?.body ?? undefined;
       const res = await requestUrl({
         url,
         method: init?.method ?? "GET",
@@ -163,7 +176,7 @@ function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
       return new Response(responseBody, {
         status: res.status,
         statusText: "",
-        headers: res.headers as Record<string, string>
+        headers: res.headers
       });
     }
   });

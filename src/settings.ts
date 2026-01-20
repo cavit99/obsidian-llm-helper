@@ -28,19 +28,19 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("API key")
-      .setDesc("Select or create a secret. ID can be anything. Needed for OpenAI models.")
+      .setDesc("Select or create a secret. The ID can be anything. Needed for OpenAI models.")
       .addComponent((el) =>
         new SecretComponent(this.app, el)
           .setValue(this.plugin.settings.openAiSecretId)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.openAiSecretId = value.trim();
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
       .setName("API base URL")
-      .setDesc("Choose OpenAI default or enter a custom endpoint.")
+      .setDesc("Choose the OpenAI default or enter a custom endpoint.")
       .addDropdown((dropdown) => {
         endpointDropdown = dropdown;
         dropdown.addOption("openai", "OpenAI");
@@ -51,11 +51,11 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
         dropdown.onChange(async (value) => {
           if (value === "openai") {
             this.plugin.settings.apiBaseUrl = DEFAULT_SETTINGS.apiBaseUrl;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             customInput.setValue(DEFAULT_SETTINGS.apiBaseUrl);
           } else if (value === "openrouter") {
             this.plugin.settings.apiBaseUrl = this.OPENROUTER_BASE;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             customInput.setValue(this.OPENROUTER_BASE);
           } else {
             // Prefill a sensible local default when switching to Custom from the default.
@@ -64,7 +64,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
               current === DEFAULT_SETTINGS.apiBaseUrl || current === "" ? this.LOCAL_LM_STUDIO_DEFAULT : current;
             customInput.setValue(nextValue);
             this.plugin.settings.apiBaseUrl = nextValue;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           }
         });
       })
@@ -73,9 +73,9 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
         text
           .setPlaceholder(DEFAULT_SETTINGS.apiBaseUrl)
           .setValue(this.plugin.settings.apiBaseUrl)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.apiBaseUrl = value.trim() || DEFAULT_SETTINGS.apiBaseUrl;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             if (!endpointDropdown) return;
             if (this.plugin.settings.apiBaseUrl !== DEFAULT_SETTINGS.apiBaseUrl) endpointDropdown.setValue("custom");
             else endpointDropdown.setValue("openai");
@@ -84,20 +84,20 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Model name")
-      .setDesc("The model name sent to the endpoint. e.g. gpt-5.2 for OpenAI, or mistral-nemo as a locally hosted model")
+      .setDesc("Model name sent to the endpoint, for example gpt-5.2 (OpenAI) or mistral-nemo (local).")
       .addText((text) => {
         text
           .setPlaceholder(DEFAULT_SETTINGS.model)
           .setValue(this.plugin.settings.model)
-          .onChange(async (value) => {
+          .onChange((value) => {
             this.plugin.settings.model = value.trim() || DEFAULT_SETTINGS.model;
-            await this.plugin.saveSettings();
+            void this.plugin.saveSettings();
           });
       });
 
     new Setting(containerEl)
-      .setName("Hotkey")
-      .setDesc("Optional: set your shortcut for ‘Ask AI…’ in Settings → Hotkeys (search ‘Ask AI…’).")
+      .setName("Keyboard shortcut")
+      .setDesc("Optional: set your shortcut for “Ask AI…” in Settings → Hotkeys (search “Ask AI…”).")
       .addButton((btn) => {
         btn.setButtonText("Open hotkeys").onClick(() => {
           const settingsView = this.app as App & {
