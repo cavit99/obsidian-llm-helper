@@ -1,9 +1,12 @@
-import { App, PluginSettingTab, SecretComponent, Setting } from "obsidian";
+import { App, PluginSettingTab, SecretComponent, Setting, type TextComponent, type DropdownComponent } from "obsidian";
 import type ObsidianAiLlmHelperPlugin from "./main";
 import { DEFAULT_SETTINGS } from "./types";
 
 export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
   plugin: ObsidianAiLlmHelperPlugin;
+
+  private readonly LOCAL_LM_STUDIO_DEFAULT = "http://localhost:1234/v1/chat/completions";
+  private readonly OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
   constructor(app: App, plugin: ObsidianAiLlmHelperPlugin) {
     super(app, plugin);
@@ -13,6 +16,8 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+    let customInput: TextComponent;
+    let endpointDropdown: DropdownComponent;
 
     new Setting(containerEl).setName("AI helper").setHeading();
 
@@ -23,7 +28,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("API key")
-      .setDesc("Select or create a secret (per-device). Suggested ID: llm-helper-api-key.")
+      .setDesc("Select or create a secret. ID can be anything. Needed for OpenAI models.")
       .addComponent((el) =>
         new SecretComponent(this.app, el)
           .setValue(this.plugin.settings.openAiSecretId)
@@ -35,20 +40,51 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("API base URL")
-      .setDesc("Responses API base, for example https://api.openai.com/v1 or http://localhost:1234/v1 for LM Studio.")
+      .setDesc("Choose OpenAI default or enter a custom endpoint.")
+      .addDropdown((dropdown) => {
+        endpointDropdown = dropdown as DropdownComponent;
+        dropdown.addOption("openai", "OpenAI");
+        dropdown.addOption("openrouter", "OpenRouter");
+        dropdown.addOption("custom", "Custom…");
+        const isCustom = this.plugin.settings.apiBaseUrl !== DEFAULT_SETTINGS.apiBaseUrl;
+        dropdown.setValue(isCustom ? "custom" : "openai");
+        dropdown.onChange(async (value) => {
+          if (value === "openai") {
+            this.plugin.settings.apiBaseUrl = DEFAULT_SETTINGS.apiBaseUrl;
+            await this.plugin.saveSettings();
+            customInput.setValue(DEFAULT_SETTINGS.apiBaseUrl);
+          } else if (value === "openrouter") {
+            this.plugin.settings.apiBaseUrl = this.OPENROUTER_BASE;
+            await this.plugin.saveSettings();
+            customInput.setValue(this.OPENROUTER_BASE);
+          } else {
+            // Prefill a sensible local default when switching to Custom from the default.
+            const current = customInput.getValue().trim();
+            const nextValue =
+              current === DEFAULT_SETTINGS.apiBaseUrl || current === "" ? this.LOCAL_LM_STUDIO_DEFAULT : current;
+            customInput.setValue(nextValue);
+            this.plugin.settings.apiBaseUrl = nextValue;
+            await this.plugin.saveSettings();
+          }
+        });
+      })
       .addText((text) => {
+        customInput = text as TextComponent;
         text
           .setPlaceholder(DEFAULT_SETTINGS.apiBaseUrl)
           .setValue(this.plugin.settings.apiBaseUrl)
           .onChange(async (value) => {
             this.plugin.settings.apiBaseUrl = value.trim() || DEFAULT_SETTINGS.apiBaseUrl;
             await this.plugin.saveSettings();
+            if (!endpointDropdown) return;
+            if (this.plugin.settings.apiBaseUrl !== DEFAULT_SETTINGS.apiBaseUrl) endpointDropdown.setValue("custom");
+            else endpointDropdown.setValue("openai");
           });
       });
 
     new Setting(containerEl)
       .setName("Model name")
-      .setDesc("The model name sent to the responses API.")
+      .setDesc("The model name sent to the endpoint. e.g. gpt-5.2 for OpenAI, or mistral-nemo as a locally hosted model")
       .addText((text) => {
         text
           .setPlaceholder(DEFAULT_SETTINGS.model)
@@ -83,5 +119,19 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
           }, 50);
         });
       });
+
+    // Support / Buy Me a Coffee
+    const support = containerEl.createDiv({ cls: "obsidian-llm-helper-support" });
+    const link = support.createEl("a", {
+      href: "https://buymeacoffee.com/cavit99",
+      attr: { target: "_blank", rel: "noopener" }
+    });
+    const img = link.createEl("img", {
+      attr: {
+        src: "https://www.owlstown.com/assets/icons/bmc-yellow-button-941f96a1.png",
+        alt: "Buy Me a Coffee"
+      }
+    });
+    img.addClass("obsidian-llm-helper-support-img");
   }
 }
