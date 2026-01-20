@@ -81,6 +81,7 @@ async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, 
     text: {
       format: zodTextFormat(ContentSchema, "obsidian_ai_llm_helper_edit")
     },
+    prompt_cache_key: "obsidian_llm_helper_v1",
     store: false
   });
 
@@ -109,6 +110,7 @@ async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiB
       { role: "user", content: buildUserMessage(payload) }
     ],
     text: { format: { type: "json_object" } },
+    prompt_cache_key: "obsidian_llm_helper_v1",
     store: false
   });
 
