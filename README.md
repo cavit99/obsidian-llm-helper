@@ -13,14 +13,14 @@ Simple yet effective modern AI helper to help you write in Obsidian. Select text
 Settings → Community plugins → AI LLM Helper
 - API key (stored as an Obsidian secret; per-device, not synced; leave blank if your local model doesn’t need auth)
 - API base URL (default is set for OpenAI; change this to match your local model or preferred endpoint)
-- Model name (e.g. `gpt-5.2`, openrouter or local model id)
+- Model name (e.g. `gpt-5.2`, OpenRouter, or local model id)
 - Requires Obsidian 1.11.4 or newer (for SecretStorage support).
 
 ## Use
 
 - Select text (or leave none to insert) and run the “Ask AI…” command from the command palette or the editor context menu.
-- Add your own hotkey in Settings → Hotkeys → search “Ask AI…” (suggestion: Cmd/Ctrl+Shift+A if it’s free).
-- Type a short instruction; Enter key submits.
+- Add your own keyboard shortcut in Settings → Hotkeys → search “Ask AI…” (suggestion: Cmd/Ctrl+Shift+A if it’s free).
+- Type a short instruction; press Enter to submit.
 - Undo any change with Cmd/Ctrl+Z as normal.
 
 ## Security
