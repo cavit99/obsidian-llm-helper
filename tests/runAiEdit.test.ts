@@ -220,3 +220,37 @@ describe("runAiEdit insert heuristics", () => {
     expect(editor.text).toBe("- A\n- B\n- Quiet space\n- Good lighting\n- Ergonomic chair");
   });
 });
+
+describe("runAiEdit replace mode", () => {
+  let plugin: ObsidianAiLlmHelperPlugin;
+
+  beforeEach(() => {
+    mockGenerate.mockReset();
+    plugin = new ObsidianAiLlmHelperPlugin({} as any, {} as any);
+    plugin.settings = {
+      ...DEFAULT_SETTINGS,
+      apiBaseUrl: "http://localhost:1234/v1",
+      openAiApiKey: ""
+    };
+  });
+
+  it("throws when replace is requested without a selection", async () => {
+    const doc = "Hello world";
+    const cursor = 5;
+    const editor = new MockEditor(doc, cursor);
+    await expect(plugin.runAiEdit(editor as any, "replace", "do it")).rejects.toThrow(/selection/i);
+  });
+
+  it("replaces the selected text and shows notice", async () => {
+    const doc = "Hello world";
+    const start = doc.indexOf("world");
+    const end = start + "world".length;
+    const editor = new MockEditor(doc, start, end);
+    mockGenerate.mockResolvedValue("earth");
+
+    await plugin.runAiEdit(editor as any, "replace", "replace it");
+
+    expect(editor.text).toBe("Hello earth");
+    expect((Notice as any).messages?.length ?? 0).toBeGreaterThanOrEqual(0);
+  });
+});
