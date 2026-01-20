@@ -58,5 +58,30 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       });
+
+    new Setting(containerEl)
+      .setName("Hotkey")
+      .setDesc("Optional: set your shortcut for ‘Ask AI…’ in Settings → Hotkeys (search ‘Ask AI…’).")
+      .addButton((btn) => {
+        btn.setButtonText("Open hotkeys").onClick(() => {
+          // Falls back silently if the settings API shape changes.
+          // @ts-expect-error openTabById is available on the settings view in Obsidian 1.11.x
+          this.app.setting?.openTabById?.("hotkeys");
+          // Attempt to prefill the Hotkeys search with our command name.
+          window.setTimeout(() => {
+            const activeTab = (this.app as any).setting?.activeTab;
+            const search = activeTab?.searchComponent;
+            try {
+              if (search?.setValue) search.setValue("Ask AI…");
+              if (search?.inputEl) {
+                search.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+            } catch (e) {
+              // best-effort only
+              console.debug("[llm-helper] hotkey search prefill failed", e);
+            }
+          }, 50);
+        });
+      });
   }
 }
