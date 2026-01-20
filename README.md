@@ -12,8 +12,8 @@ Simple yet effective modern AI helper to help you write in Obsidian. Select text
 
 Settings → Community plugins → AI LLM Helper
 - API key (stored as an Obsidian secret; per-device, not synced; leave blank if your local model doesn’t need auth)
-- API base URL (default `https://api.openai.com/v1`, e.g. `http://localhost:1234/v1` for LM Studio, or OpenRouter etc.)
-- Model name (e.g. `gpt-5.2`, or your local model id)
+- API base URL (default is set for OpenAI; change this to match your local model or preferred endpoint)
+- Model name (e.g. `gpt-5.2`, openrouter or local model id)
 - Requires Obsidian 1.11.4 or newer (for SecretStorage support).
 
 ## Use
@@ -26,3 +26,5 @@ Settings → Community plugins → AI LLM Helper
 ## Security
 
 Secrets are stored via Obsidian SecretStorage (per-device, not synced). For hosted APIs, keep your vault private and avoid sharing secrets. For local models that don’t require auth, you can leave the key empty.
+
+## Local models: For best results prefer models that support tool/structured outputs (e.g mistral-nemo, gpt-oss etc)
