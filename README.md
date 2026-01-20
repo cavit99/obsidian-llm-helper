@@ -1,4 +1,4 @@
-# Obsidian AI LLM Helper (Obsidian plugin)
+# AI LLM Helper (Obsidian plugin)
 
 Simple AI helper to help you write in Obsidian. Select text and ask an LLM to rewrite it, or insert new text at the cursor.
 
@@ -9,14 +9,15 @@ Simple AI helper to help you write in Obsidian. Select text and ask an LLM to re
 
 ## Configure
 
-Settings → Community plugins → Obsidian AI LLM Helper
+Settings → Community plugins → AI LLM Helper
 - API key (required for OpenAI; leave blank for local servers that don’t need auth)
 - API base URL (default `https://api.openai.com/v1`, e.g. `http://localhost:1234/v1` for LM Studio, or OpenRouter etc.)
 - Model name (e.g. `gpt-5.2`, or your local model id)
 
 ## Use
 
-- Select text and use default hotkey: Cmd/Ctrl+Shift+A) or right click and select "AI LLM Helper: Ask AI…"
+- Select text (or leave none to insert) and run the “Ask AI…” command from the command palette or the editor context menu.
+- Add your own hotkey in Settings → Hotkeys → search “Ask AI…” (suggestion: Cmd/Ctrl+Shift+A if it’s free).
 - Type a short instruction; Enter key submits.
 - Undo any change with Cmd/Ctrl+Z as normal.
 

@@ -17,13 +17,12 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass("obsidian-llm-helper-statusbar");
-    this.statusBarEl.style.display = "none";
+    this.statusBarEl.addClass("obsidian-llm-helper-hidden");
 
     // Single command: ask AI; mode is inferred from selection (replace if selected, otherwise insert).
     this.addCommand({
-      id: "obsidian-llm-helper-ask",
-      name: "Obsidian AI LLM Helper: Ask AI…",
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "a" }], // Cmd/Ctrl+Shift+A
+      id: "ask-ai",
+      name: "Ask AI…",
       editorCallback: (editor: Editor) => {
         new PromptModal(this.app, this, editor).open();
       }
@@ -33,7 +32,7 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor: Editor) => {
         menu.addItem((item) => {
-          item.setTitle("Obsidian AI LLM Helper: Ask AI…");
+          item.setTitle("Ask AI…");
           item.onClick(() => {
             new PromptModal(this.app, this, editor).open();
           });
@@ -55,10 +54,10 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  private setBusy(on: boolean, message = "Obsidian AI LLM Helper: running…"): void {
+  private setBusy(on: boolean, message = "Running AI edit…"): void {
     if (!this.statusBarEl) return;
-    this.statusBarEl.style.display = on ? "block" : "none";
-    this.statusBarEl.textContent = message;
+    this.statusBarEl.toggleClass("obsidian-llm-helper-hidden", !on);
+    if (on) this.statusBarEl.textContent = message;
   }
 
   async runAiEdit(editor: Editor, mode: ApplyMode, userPrompt: string): Promise<void> {
@@ -99,7 +98,7 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
       throw new Error("Replace mode requires a selection.");
     }
 
-    this.setBusy(true, "Obsidian AI LLM Helper: running…");
+    this.setBusy(true, "Running AI edit…");
 
     let content: string;
     try {
@@ -124,12 +123,12 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
 
     if (mode === "replace") {
       editor.replaceSelection(content); // :contentReference[oaicite:6]{index=6}
-      new Notice("Obsidian AI LLM Helper: selection replaced. Undo with Cmd/Ctrl+Z.");
+      new Notice("Selection replaced. Undo with Cmd/Ctrl+Z.");
       return;
     }
 
     // Insert at cursor or end-of-selection using replaceRange(pos). :contentReference[oaicite:7]{index=7}
     editor.replaceRange(content, toPos);
-    new Notice("Obsidian AI LLM Helper: text inserted. Undo with Cmd/Ctrl+Z.");
+    new Notice("Text inserted. Undo with Cmd/Ctrl+Z.");
   }
 }

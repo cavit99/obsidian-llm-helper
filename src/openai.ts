@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { requestUrl, type RequestUrlResponse } from "obsidian";
 import type { ApplyMode, AiContextPayload } from "./types";
 
 function buildResponsesUrl(baseUrl: string): string {
@@ -45,26 +45,35 @@ function buildUserMessage(payload: AiContextPayload): string {
   ].join("\n");
 }
 
-function extractOutputText(resp: any): string {
-  // SDK-only convenience might not exist in raw REST responses, but harmless to check.
-  if (typeof resp?.output_text === "string" && resp.output_text.trim()) return resp.output_text;
-
-  const out = resp?.output;
-  if (!Array.isArray(out)) return "";
-
-  const chunks: string[] = [];
-  for (const item of out) {
-    if (item?.type !== "message") continue;
-    const content = item?.content;
-    if (!Array.isArray(content)) continue;
-    for (const c of content) {
-      if (c?.type === "output_text" && typeof c?.text === "string") chunks.push(c.text);
+function extractOutputText(resp: unknown): string {
+  if (typeof resp === "object" && resp !== null) {
+    const responseObject = resp as { output_text?: unknown; output?: unknown };
+    if (typeof responseObject.output_text === "string" && responseObject.output_text.trim()) {
+      return responseObject.output_text;
+    }
+    if (Array.isArray(responseObject.output)) {
+      const chunks: string[] = [];
+      for (const item of responseObject.output) {
+        if (!item || typeof item !== "object") continue;
+        const message = item as { type?: unknown; content?: unknown };
+        if (message.type !== "message" || !Array.isArray(message.content)) continue;
+        for (const content of message.content) {
+          if (!content || typeof content !== "object") continue;
+          const chunk = content as { type?: unknown; text?: unknown };
+          if (chunk.type === "output_text" && typeof chunk.text === "string") {
+            chunks.push(chunk.text);
+          }
+        }
+      }
+      return chunks.join("");
     }
   }
-  return chunks.join("");
+
+  // SDK-only convenience might not exist in raw REST responses, but harmless to check.
+  return "";
 }
 
-function safeJsonFromText(text: string): any {
+function safeJsonFromText(text: string): unknown {
   const trimmed = (text ?? "").trim();
   if (!trimmed) throw new Error("Empty model output.");
 
@@ -80,6 +89,23 @@ function safeJsonFromText(text: string): any {
     }
     throw new Error("Model output was not valid JSON. Try a different model.");
   }
+}
+
+function getResponseErrorMessage(data: unknown, status: number): string {
+  if (data && typeof data === "object" && "error" in data) {
+    const error = (data as { error?: unknown }).error;
+    if (error && typeof error === "object" && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+  }
+  return `HTTP ${status}`;
+}
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "string") return err;
+  return String(err);
 }
 
 function buildHeaders(apiKey?: string): Record<string, string> {
@@ -119,24 +145,23 @@ async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, 
     store: false
   };
 
-  const res = await requestUrl({
+  const res: RequestUrlResponse = await requestUrl({
     url: buildResponsesUrl(apiBaseUrl),
     method: "POST",
     headers: buildHeaders(apiKey),
     body: JSON.stringify(reqBody)
   });
 
-  const data = (res as any).json ?? JSON.parse((res as any).text ?? "{}");
+  const data: unknown = res.json ?? JSON.parse(res.text ?? "{}");
 
   if (res.status >= 400) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new Error(getResponseErrorMessage(data, res.status));
   }
 
   const outputText = extractOutputText(data);
   const parsed = safeJsonFromText(outputText);
 
-  const content = parsed?.content;
+  const content = (parsed as { content?: unknown }).content;
   if (typeof content !== "string") throw new Error("Schema mismatch: expected { content: string }.");
   return content;
 }
@@ -156,24 +181,23 @@ async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiB
     store: false
   };
 
-  const res = await requestUrl({
+  const res: RequestUrlResponse = await requestUrl({
     url: buildResponsesUrl(apiBaseUrl),
     method: "POST",
     headers: buildHeaders(apiKey),
     body: JSON.stringify(reqBody)
   });
 
-  const data = (res as any).json ?? JSON.parse((res as any).text ?? "{}");
+  const data: unknown = res.json ?? JSON.parse(res.text ?? "{}");
 
   if (res.status >= 400) {
-    const msg = data?.error?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new Error(getResponseErrorMessage(data, res.status));
   }
 
   const outputText = extractOutputText(data);
   const parsed = safeJsonFromText(outputText);
 
-  const content = parsed?.content;
+  const content = (parsed as { content?: unknown }).content;
   if (typeof content !== "string") throw new Error("JSON mode output did not contain { content: string }.");
   return content;
 }
@@ -210,8 +234,8 @@ export async function generateAiText(args: {
 
   try {
     return await callResponsesApi(args.apiKey, apiBaseUrl, args.model, payload);
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
+  } catch (e: unknown) {
+    const msg = toErrorMessage(e);
     // Common failure: model does not support json_schema structured outputs.
     if (msg.toLowerCase().includes("json_schema") || msg.toLowerCase().includes("structured")) {
       return await callResponsesApiJsonModeFallback(args.apiKey, apiBaseUrl, args.model, payload);

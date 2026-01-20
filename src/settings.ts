@@ -14,7 +14,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Obsidian AI LLM Helper settings" });
+    new Setting(containerEl).setName("AI helper settings").setHeading();
 
     new Setting(containerEl)
       .setName("API key")
@@ -32,7 +32,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("API base URL")
-      .setDesc("Responses API base. OpenAI default or local LM Studio: http://localhost:1234/v1")
+      .setDesc("Responses API base, for example https://api.openai.com/v1 or http://localhost:1234/v1 for LM Studio.")
       .addText((text) => {
         text
           .setPlaceholder(DEFAULT_SETTINGS.apiBaseUrl)
@@ -44,8 +44,8 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Model")
-      .setDesc("The model name sent to the Responses API.")
+      .setName("Model name")
+      .setDesc("The model name sent to the responses API.")
       .addText((text) => {
         text
           .setPlaceholder(DEFAULT_SETTINGS.model)

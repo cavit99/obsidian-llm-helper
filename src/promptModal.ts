@@ -34,18 +34,18 @@ export class PromptModal extends Modal {
     new Setting(contentEl)
       .setName("What do you want the AI to do?")
       .addText((text) => {
-        text.inputEl.style.width = "100%";
-        text.setPlaceholder("Press Enter to ask AI…");
+        text.inputEl.addClass("obsidian-llm-helper-input");
+        text.setPlaceholder("Press Enter to ask the AI…");
         text.onChange((value) => (this.prompt = value));
 
-        text.inputEl.addEventListener("keydown", async (e: KeyboardEvent) => {
-          if ((e as any).isComposing) return;
+        text.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
+          if (e.isComposing) return;
 
           // Enter submits; Shift+Enter inserts newline.
           if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             this.prompt = text.getValue();
-            await this.run();
+            void this.run();
             return;
           }
           if (e.key === "Enter" && e.shiftKey) {
@@ -55,19 +55,21 @@ export class PromptModal extends Modal {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
             e.preventDefault();
             this.prompt = text.getValue();
-            await this.run();
+            void this.run();
           }
         });
       });
 
     // Status row (spinner + text)
-    this.statusEl = contentEl.createDiv({ cls: "obsidian-llm-helper-status" });
+    this.statusEl = contentEl.createDiv({ cls: ["obsidian-llm-helper-status", "obsidian-llm-helper-hidden"] });
     this.statusEl.createSpan({ cls: "obsidian-llm-helper-spinner" });
     this.statusTextEl = this.statusEl.createSpan({ text: "" });
 
     const btnRow = contentEl.createDiv({ cls: "obsidian-llm-helper-btn-row" });
     this.runBtn = btnRow.createEl("button", { text: "Ask AI" });
-    this.runBtn.addEventListener("click", async () => await this.run());
+    this.runBtn.addEventListener("click", () => {
+      void this.run();
+    });
   }
 
   private setLoading(on: boolean, message: string): void {
@@ -79,10 +81,10 @@ export class PromptModal extends Modal {
     }
 
     if (this.statusEl) {
-      this.statusEl.style.display = on ? "flex" : "none";
+      this.statusEl.toggleClass("obsidian-llm-helper-hidden", !on);
     }
     if (this.statusTextEl) {
-      this.statusTextEl.textContent = message;
+      this.statusTextEl.textContent = on ? message : "";
     }
   }
 
@@ -114,7 +116,8 @@ export class PromptModal extends Modal {
     } catch (err) {
       console.error("[obsidian-llm-helper] run failed", err);
       this.setLoading(false, "");
-      new Notice(`Obsidian AI LLM Helper error: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      new Notice(`AI helper error: ${message}`);
     }
   }
 

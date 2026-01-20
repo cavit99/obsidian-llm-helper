@@ -6,7 +6,7 @@
 }
 
 .obsidian-llm-helper-status {
-  display: none;
+  display: flex;
   margin-top: 10px;
   gap: 8px;
   align-items: center;
@@ -30,4 +30,12 @@
 
 .obsidian-llm-helper-statusbar {
   opacity: 0.85;
+}
+
+.obsidian-llm-helper-hidden {
+  display: none !important;
+}
+
+.obsidian-llm-helper-input {
+  width: 100%;
 }
