@@ -49,6 +49,22 @@ function toErrorMessage(err: unknown): string {
   return String(err);
 }
 
+function findRefusal(output: unknown): string | null {
+  if (!Array.isArray(output)) return null;
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const message = item as { content?: unknown };
+    if (!Array.isArray(message.content)) continue;
+    for (const c of message.content) {
+      if (c && typeof c === "object" && (c as { type?: string }).type === "refusal") {
+        const text = (c as { refusal?: string }).refusal;
+        if (typeof text === "string" && text.trim()) return text;
+      }
+    }
+  }
+  return null;
+}
+
 function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
   const key = apiKey?.trim();
   return new OpenAI({ apiKey: key, baseURL, dangerouslyAllowBrowser: true });
@@ -72,6 +88,8 @@ async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, 
     const reason = (response as any).incomplete_details?.reason;
     throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
   }
+  const refusal = findRefusal((response as any).output);
+  if (refusal) throw new Error(`Model refused the request: ${refusal}`);
   const parsed = (response as any).output_parsed as z.infer<typeof ContentSchema> | undefined;
   if (!parsed || typeof parsed.content !== "string") {
     throw new Error("Model output missing content.");
@@ -98,6 +116,9 @@ async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiB
     const reason = (response as any).incomplete_details?.reason;
     throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
   }
+
+  const refusal = findRefusal((response as any).output);
+  if (refusal) throw new Error(`Model refused the request: ${refusal}`);
 
   const outputText = (response as any).output_text as string | undefined;
   if (!outputText || !outputText.trim()) throw new Error("Empty model output.");
