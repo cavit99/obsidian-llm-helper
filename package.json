@@ -6,12 +6,18 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
-    "typecheck": "tsc -noEmit -p tsconfig.json"
+    "typecheck": "tsc -noEmit -p tsconfig.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "esbuild": "^0.25.0",
     "obsidian": "^1.8.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "openai": "^6.16.0",
+    "zod": "^4.3.5"
   }
 }

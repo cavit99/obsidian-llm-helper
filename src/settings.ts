@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type ObsidianAiLlmHelperPlugin from "./main";
 import { DEFAULT_SETTINGS } from "./types";
 
@@ -14,21 +14,24 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName("AI helper settings").setHeading();
+    new Setting(containerEl).setName("AI helper").setHeading();
+
+    if (!this.plugin.settings.openAiSecretId) {
+      this.plugin.settings.openAiSecretId = "llm-helper-api-key";
+      void this.plugin.saveSettings();
+    }
 
     new Setting(containerEl)
       .setName("API key")
-      .setDesc("Used for servers that require Bearer auth (OpenAI, etc.). Leave empty for local servers that do not need auth.")
-      .addText((text) => {
-        text.inputEl.type = "password";
-        text
-          .setPlaceholder("sk-...")
-          .setValue(this.plugin.settings.openAiApiKey)
+      .setDesc("Select or create a secret (per-device). Suggested ID: llm-helper-api-key.")
+      .addComponent((el) =>
+        new SecretComponent(this.app, el)
+          .setValue(this.plugin.settings.openAiSecretId)
           .onChange(async (value) => {
-            this.plugin.settings.openAiApiKey = value.trim();
+            this.plugin.settings.openAiSecretId = value.trim();
             await this.plugin.saveSettings();
-          });
-      });
+          })
+      );
 
     new Setting(containerEl)
       .setName("API base URL")

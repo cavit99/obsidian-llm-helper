@@ -1,13 +1,13 @@
 export type ApplyMode = "replace" | "insert";
 
 export interface ObsidianAiLlmHelperSettings {
-  openAiApiKey: string;
+  openAiSecretId: string;
   model: string;
   apiBaseUrl: string;
 }
 
 export const DEFAULT_SETTINGS: ObsidianAiLlmHelperSettings = {
-  openAiApiKey: "",
+  openAiSecretId: "",
   model: "gpt-5.2",
   apiBaseUrl: "https://api.openai.com/v1"
 };

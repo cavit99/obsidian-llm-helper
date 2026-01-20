@@ -35,7 +35,7 @@ export class PromptModal extends Modal {
       .setName("What do you want the AI to do?")
       .addText((text) => {
         text.inputEl.addClass("obsidian-llm-helper-input");
-        text.setPlaceholder("Press Enter to ask the AI…");
+        text.setPlaceholder("Press enter to ask the AI…");
         text.onChange((value) => (this.prompt = value));
 
         text.inputEl.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -96,7 +96,7 @@ export class PromptModal extends Modal {
       return;
     }
 
-    const apiKey = this.plugin.settings.openAiApiKey;
+    const apiKey = this.plugin.settings.openAiSecretId ? this.plugin.app.secretStorage.getSecret(this.plugin.settings.openAiSecretId) : "";
     const apiBaseUrl = this.plugin.settings.apiBaseUrl ?? "";
     const isOpenAiBase = apiBaseUrl.toLowerCase().includes("openai.com");
     if (isOpenAiBase && !apiKey) {

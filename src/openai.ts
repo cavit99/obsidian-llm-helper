@@ -1,11 +1,7 @@
-import { requestUrl, type RequestUrlResponse } from "obsidian";
+import OpenAI from "openai";
+import { z } from "zod";
+import { zodTextFormat } from "openai/helpers/zod";
 import type { ApplyMode, AiContextPayload } from "./types";
-
-function buildResponsesUrl(baseUrl: string): string {
-  const trimmed = (baseUrl ?? "").trim().replace(/\/+$/, "");
-  if (!trimmed) throw new Error("Missing Responses API base URL.");
-  return `${trimmed}/responses`;
-}
 
 function buildSystemInstructions(): string {
   return [
@@ -45,62 +41,7 @@ function buildUserMessage(payload: AiContextPayload): string {
   ].join("\n");
 }
 
-function extractOutputText(resp: unknown): string {
-  if (typeof resp === "object" && resp !== null) {
-    const responseObject = resp as { output_text?: unknown; output?: unknown };
-    if (typeof responseObject.output_text === "string" && responseObject.output_text.trim()) {
-      return responseObject.output_text;
-    }
-    if (Array.isArray(responseObject.output)) {
-      const chunks: string[] = [];
-      for (const item of responseObject.output) {
-        if (!item || typeof item !== "object") continue;
-        const message = item as { type?: unknown; content?: unknown };
-        if (message.type !== "message" || !Array.isArray(message.content)) continue;
-        for (const content of message.content) {
-          if (!content || typeof content !== "object") continue;
-          const chunk = content as { type?: unknown; text?: unknown };
-          if (chunk.type === "output_text" && typeof chunk.text === "string") {
-            chunks.push(chunk.text);
-          }
-        }
-      }
-      return chunks.join("");
-    }
-  }
-
-  // SDK-only convenience might not exist in raw REST responses, but harmless to check.
-  return "";
-}
-
-function safeJsonFromText(text: string): unknown {
-  const trimmed = (text ?? "").trim();
-  if (!trimmed) throw new Error("Empty model output.");
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // Last-ditch: try to extract a single JSON object substring.
-    const first = trimmed.indexOf("{");
-    const last = trimmed.lastIndexOf("}");
-    if (first !== -1 && last !== -1 && last > first) {
-      const slice = trimmed.slice(first, last + 1);
-      return JSON.parse(slice);
-    }
-    throw new Error("Model output was not valid JSON. Try a different model.");
-  }
-}
-
-function getResponseErrorMessage(data: unknown, status: number): string {
-  if (data && typeof data === "object" && "error" in data) {
-    const error = (data as { error?: unknown }).error;
-    if (error && typeof error === "object" && "message" in error) {
-      const message = (error as { message?: unknown }).message;
-      if (typeof message === "string" && message.trim()) return message;
-    }
-  }
-  return `HTTP ${status}`;
-}
+const ContentSchema = z.object({ content: z.string() });
 
 function toErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
@@ -108,67 +49,39 @@ function toErrorMessage(err: unknown): string {
   return String(err);
 }
 
-function buildHeaders(apiKey?: string): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  return headers;
+function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
+  const key = apiKey?.trim();
+  return new OpenAI({ apiKey: key, baseURL, dangerouslyAllowBrowser: true });
 }
 
 async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, model: string, payload: AiContextPayload): Promise<string> {
-  const reqBody = {
+  const client = createClient(apiKey, apiBaseUrl);
+  const response = await client.responses.parse({
     model,
-    // You can also send a single string input, but we want a clear system + user split.
     input: [
       { role: "system", content: buildSystemInstructions() },
       { role: "user", content: buildUserMessage(payload) }
     ],
-    // Structured Outputs for Responses API: text.format with json_schema.
     text: {
-      format: {
-        type: "json_schema",
-        name: "obsidian_ai_llm_helper_edit",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            content: {
-              type: "string",
-              description: "Markdown text to apply (replace selection or insert)."
-            }
-          },
-          required: ["content"]
-        }
-      }
+      format: zodTextFormat(ContentSchema, "obsidian_ai_llm_helper_edit")
     },
-    // Reduce accidental retention by default.
     store: false
-  };
-
-  const res: RequestUrlResponse = await requestUrl({
-    url: buildResponsesUrl(apiBaseUrl),
-    method: "POST",
-    headers: buildHeaders(apiKey),
-    body: JSON.stringify(reqBody)
   });
 
-  const data: unknown = res.json ?? JSON.parse(res.text ?? "{}");
-
-  if (res.status >= 400) {
-    throw new Error(getResponseErrorMessage(data, res.status));
+  if (response.status === "incomplete") {
+    const reason = (response as any).incomplete_details?.reason;
+    throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
   }
-
-  const outputText = extractOutputText(data);
-  const parsed = safeJsonFromText(outputText);
-
-  const content = (parsed as { content?: unknown }).content;
-  if (typeof content !== "string") throw new Error("Schema mismatch: expected { content: string }.");
-  return content;
+  const parsed = (response as any).output_parsed as z.infer<typeof ContentSchema> | undefined;
+  if (!parsed || typeof parsed.content !== "string") {
+    throw new Error("Model output missing content.");
+  }
+  return parsed.content;
 }
 
 async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiBaseUrl: string, model: string, payload: AiContextPayload): Promise<string> {
-  // Fallback if json_schema is not supported on a given model.
-  const reqBody = {
+  const client = createClient(apiKey, apiBaseUrl);
+  const response = await client.responses.create({
     model,
     input: [
       {
@@ -179,27 +92,18 @@ async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiB
     ],
     text: { format: { type: "json_object" } },
     store: false
-  };
-
-  const res: RequestUrlResponse = await requestUrl({
-    url: buildResponsesUrl(apiBaseUrl),
-    method: "POST",
-    headers: buildHeaders(apiKey),
-    body: JSON.stringify(reqBody)
   });
 
-  const data: unknown = res.json ?? JSON.parse(res.text ?? "{}");
-
-  if (res.status >= 400) {
-    throw new Error(getResponseErrorMessage(data, res.status));
+  if (response.status === "incomplete") {
+    const reason = (response as any).incomplete_details?.reason;
+    throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
   }
 
-  const outputText = extractOutputText(data);
-  const parsed = safeJsonFromText(outputText);
+  const outputText = (response as any).output_text as string | undefined;
+  if (!outputText || !outputText.trim()) throw new Error("Empty model output.");
 
-  const content = (parsed as { content?: unknown }).content;
-  if (typeof content !== "string") throw new Error("JSON mode output did not contain { content: string }.");
-  return content;
+  const parsed = ContentSchema.parse(JSON.parse(outputText));
+  return parsed.content;
 }
 
 export async function generateAiText(args: {
