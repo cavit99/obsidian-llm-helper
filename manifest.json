@@ -1,0 +1,10 @@
+{
+  "id": "llm-helper",
+  "name": "AI LLM Helper",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "Select text and ask an LLM (OpenAI or Local Endpoint) to rewrite it in any way, or insert generated text at the cursor.",
+  "author": "Cavit Erginsoy",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

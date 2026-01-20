@@ -1,0 +1,33 @@
+.obsidian-llm-helper-btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.obsidian-llm-helper-status {
+  display: none;
+  margin-top: 10px;
+  gap: 8px;
+  align-items: center;
+  opacity: 0.85;
+}
+
+.obsidian-llm-helper-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--text-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: obsidian-llm-helper-spin 0.8s linear infinite;
+}
+
+@keyframes obsidian-llm-helper-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.obsidian-llm-helper-statusbar {
+  opacity: 0.85;
+}
