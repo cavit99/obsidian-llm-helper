@@ -5,7 +5,8 @@ Simple yet effective modern AI helper to help you write in Obsidian. Select text
 ## What it does
 
 - Rewrite selected text or insert AI-generated text at your cursor position, guided by any prompt.
-- Works with any endpoint that supports the OpenAI-style Responses API, including OpenAI and local services like LM Studio, Ollama, and others
+- Works with any endpoint that supports the OpenAI-style Responses API, including OpenAI and local services like LM Studio, Ollama, and others.
+- Sends the full document plus nearby context around the cursor/selection to the model for higher-quality edits.
 
 ## Configure
 
