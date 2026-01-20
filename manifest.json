@@ -3,7 +3,7 @@
   "name": "AI LLM Helper",
   "version": "0.1.0",
   "minAppVersion": "1.11.4",
-  "description": "Select text and ask an LLM (OpenAI or Local Endpoint) to rewrite it in any way, or insert generated text at the cursor.",
+  "description": "Simply select text and ask an LLM to rewrite it in any way, or insert generated text at the cursor. Supports OpenAI, OpenRouter, Ollama, LM Studio and more.",
   "author": "Cavit Erginsoy",
   "authorUrl": "",
   "isDesktopOnly": false
