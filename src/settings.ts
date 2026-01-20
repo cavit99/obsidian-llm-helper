@@ -42,7 +42,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
       .setName("API base URL")
       .setDesc("Choose OpenAI default or enter a custom endpoint.")
       .addDropdown((dropdown) => {
-        endpointDropdown = dropdown as DropdownComponent;
+        endpointDropdown = dropdown;
         dropdown.addOption("openai", "OpenAI");
         dropdown.addOption("openrouter", "OpenRouter");
         dropdown.addOption("custom", "Custom…");
@@ -69,7 +69,7 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
         });
       })
       .addText((text) => {
-        customInput = text as TextComponent;
+        customInput = text;
         text
           .setPlaceholder(DEFAULT_SETTINGS.apiBaseUrl)
           .setValue(this.plugin.settings.apiBaseUrl)
@@ -100,20 +100,22 @@ export class ObsidianAiLlmHelperSettingTab extends PluginSettingTab {
       .setDesc("Optional: set your shortcut for ‘Ask AI…’ in Settings → Hotkeys (search ‘Ask AI…’).")
       .addButton((btn) => {
         btn.setButtonText("Open hotkeys").onClick(() => {
-          // Falls back silently if the settings API shape changes.
-          // @ts-expect-error openTabById is available on the settings view in Obsidian 1.11.x
-          this.app.setting?.openTabById?.("hotkeys");
-          // Attempt to prefill the Hotkeys search with our command name.
+          const settingsView = this.app as App & {
+            setting?: {
+              openTabById?: (id: string) => void;
+              activeTab?: { searchComponent?: { setValue?: (v: string) => void; inputEl?: HTMLElement } };
+            };
+          };
+          settingsView.setting?.openTabById?.("hotkeys");
           window.setTimeout(() => {
-            const activeTab = (this.app as any).setting?.activeTab;
+            const activeTab = settingsView.setting?.activeTab;
             const search = activeTab?.searchComponent;
             try {
-              if (search?.setValue) search.setValue("Ask AI…");
+              search?.setValue?.("Ask AI…");
               if (search?.inputEl) {
                 search.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
               }
             } catch (e) {
-              // best-effort only
               console.debug("[llm-helper] hotkey search prefill failed", e);
             }
           }, 50);

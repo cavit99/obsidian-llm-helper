@@ -231,7 +231,7 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
   }
 
   private highlightRange(editor: Editor, fromOffset: number, toOffset: number): void {
-    const view = (editor as any).cm as EditorView | undefined;
+    const view = (editor as Editor & { cm?: EditorView }).cm;
     if (!view) return;
     const doc = view.state.doc;
     const clamp = (n: number) => Math.max(0, Math.min(n, doc.length));

@@ -51,20 +51,31 @@ function toErrorMessage(err: unknown): string {
 }
 
 function normalizeError(err: unknown): Error {
-  const anyErr = err as any;
-  const status =
-    anyErr?.status ??
-    anyErr?.httpStatus ??
-    anyErr?.statusCode ??
-    anyErr?.response?.status ??
-    anyErr?.response?.statusCode;
-  const code = anyErr?.code ?? anyErr?.error?.code ?? anyErr?.response?.data?.error?.code;
-  const detail =
-    anyErr?.error?.message ??
-    anyErr?.response?.data?.error?.message ??
-    anyErr?.response?.error?.message ??
-    anyErr?.message;
-  const name = anyErr?.name ?? anyErr?.constructor?.name;
+  const source = (err ?? {}) as Record<string, unknown>;
+  const response = (source.response as Record<string, unknown>) ?? {};
+  const responseData = (response.data as Record<string, unknown>) ?? {};
+  const errorObj = (source.error as Record<string, unknown>) ?? {};
+
+  const statusCandidates = [
+    source.status,
+    source.httpStatus,
+    source.statusCode,
+    response.status,
+    response.statusCode
+  ];
+  const status = statusCandidates.find((v): v is number => typeof v === "number");
+
+  const codeCandidates = [source.code, errorObj.code, responseData.error ? (responseData.error as Record<string, unknown>).code : undefined];
+  const code = codeCandidates.find((v): v is string => typeof v === "string");
+
+  const detailCandidates = [
+    errorObj.message,
+    responseData.error ? (responseData.error as Record<string, unknown>).message : undefined,
+    response.error ? (response.error as Record<string, unknown>).message : undefined,
+    source.message
+  ];
+  const detail = detailCandidates.find((v): v is string => typeof v === "string");
+  const name = typeof source.name === "string" ? source.name : typeof (source.constructor as { name?: string })?.name === "string" ? (source.constructor as { name?: string }).name : undefined;
   const msg = toErrorMessage(err);
 
   const authPatterns = /invalid api key|incorrect api key|authentication|unauthorized|auth failed|invalid authentication/i;
@@ -74,7 +85,7 @@ function normalizeError(err: unknown): Error {
     code === "invalid_api_key" ||
     name === "AuthenticationError" ||
     authPatterns.test(msg) ||
-    authPatterns.test(detail ?? "")
+    (detail ? authPatterns.test(detail) : false)
   ) {
     return new Error(`Authentication failed. Check your API key and project/organization. (${detail ?? msg})`);
   }
@@ -136,27 +147,22 @@ function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
     dangerouslyAllowBrowser: true,
     fetch: async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
-      if (!isLocalUrl(url)) {
-        return fetch(input as Request | string, init);
-      }
-
-      let headers: Record<string, string> | undefined;
-      if (init?.headers) {
-        headers = {};
-        new Headers(init.headers as any).forEach((v, k) => {
-          headers![k] = v;
-        });
-      }
+      const headersObj = new Headers(init?.headers ?? {});
+      const headers: Record<string, string> = {};
+      headersObj.forEach((v, k) => {
+        headers[k] = v;
+      });
+      const body = (init?.body as string | ArrayBuffer | ArrayBufferView | FormData | null | undefined) ?? undefined;
       const res = await requestUrl({
         url,
         method: init?.method ?? "GET",
         headers,
-        body: init?.body as any
+        body
       });
-      const body = res.arrayBuffer ?? res.text ?? "";
-      return new Response(body, {
+      const responseBody = res.arrayBuffer ?? res.text ?? "";
+      return new Response(responseBody, {
         status: res.status,
-        statusText: (res as any).statusText ?? "",
+        statusText: "",
         headers: res.headers as Record<string, string>
       });
     }
@@ -179,13 +185,20 @@ async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, 
       store: false
     });
 
-    if (response.status === "incomplete") {
-      const reason = (response as any).incomplete_details?.reason;
+    const parsedResponse = response as {
+      status?: string;
+      incomplete_details?: { reason?: string };
+      output?: unknown;
+      output_parsed?: { content?: string };
+    };
+
+    if (parsedResponse.status === "incomplete") {
+      const reason = parsedResponse.incomplete_details?.reason;
       throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
     }
-    const refusal = findRefusal((response as any).output);
+    const refusal = findRefusal(parsedResponse.output);
     if (refusal) throw new Error(`Model refused the request: ${refusal}`);
-    const parsed = (response as any).output_parsed as z.infer<typeof ContentSchema> | undefined;
+    const parsed = parsedResponse.output_parsed;
     if (!parsed || typeof parsed.content !== "string") {
       throw new Error("Model output missing content.");
     }
@@ -212,15 +225,22 @@ async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiB
       store: false
     });
 
-    if (response.status === "incomplete") {
-      const reason = (response as any).incomplete_details?.reason;
+    const parsedResponse = response as {
+      status?: string;
+      incomplete_details?: { reason?: string };
+      output?: unknown;
+      output_text?: string;
+    };
+
+    if (parsedResponse.status === "incomplete") {
+      const reason = parsedResponse.incomplete_details?.reason;
       throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
     }
 
-    const refusal = findRefusal((response as any).output);
+    const refusal = findRefusal(parsedResponse.output);
     if (refusal) throw new Error(`Model refused the request: ${refusal}`);
 
-    const outputText = (response as any).output_text as string | undefined;
+    const outputText = parsedResponse.output_text;
     if (!outputText || !outputText.trim()) throw new Error("Empty model output.");
 
     const parsed = ContentSchema.parse(JSON.parse(outputText));
@@ -263,8 +283,8 @@ async function callLocalChatCompletions(apiBaseUrl: string, model: string, paylo
     throw new Error(res.text || `HTTP ${res.status}`);
   }
 
-  const data = res.json ?? JSON.parse(res.text ?? "{}");
-  const choice = (data as any)?.choices?.[0]?.message?.content;
+  const data = (res.json as { choices?: Array<{ message?: { content?: unknown } }> } | undefined) ?? JSON.parse(res.text ?? "{}");
+  const choice = data?.choices?.[0]?.message?.content;
   if (typeof choice === "string" && choice.trim()) {
     const cleaned = stripCodeFences(choice).trim();
     try {
