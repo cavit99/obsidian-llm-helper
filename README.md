@@ -28,3 +28,8 @@ Settings → Community plugins → AI LLM Helper
 Secrets are stored via Obsidian SecretStorage (per-device, not synced). For hosted APIs, keep your vault private and avoid sharing secrets. For local models that don’t require auth, you can leave the key empty.
 
 ## Local models: For best results prefer models that support tool/structured outputs (e.g mistral-nemo, gpt-oss etc)
+
+## Disclosures
+
+- Network use: your prompt, entire document, and selection context are sent directly to the configured LLM endpoint.
+- The settings page includes a “Buy Me a Coffee” support link. No ads or telemetry are included.
