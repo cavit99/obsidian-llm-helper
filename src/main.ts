@@ -1,4 +1,6 @@
 import { Editor, Notice, Plugin } from "obsidian";
+import { StateEffect, StateField } from "@codemirror/state";
+import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
 import type { ApplyMode, ObsidianAiLlmHelperSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { ObsidianAiLlmHelperSettingTab } from "./settings";
@@ -6,6 +8,29 @@ import { PromptModal } from "./promptModal";
 import { generateAiText } from "./openai";
 
 const CONTEXT_WINDOW_CHARS = 500; // fixed per side, plus full document is always sent.
+
+type HighlightSpec = { from: number; to: number };
+const addHighlightEffect = StateEffect.define<HighlightSpec>();
+const clearHighlightEffect = StateEffect.define<HighlightSpec>();
+const highlightMark = Decoration.mark({ class: "obsidian-llm-helper-flash" });
+const highlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    let deco = value.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(addHighlightEffect)) {
+        deco = deco.update({ add: [highlightMark.range(e.value.from, e.value.to)] });
+      } else if (e.is(clearHighlightEffect)) {
+        const { from, to } = e.value;
+        deco = deco.update({
+          filter: (a, b) => !(a === from && b === to)
+        });
+      }
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f)
+});
 
 function getListLineInfo(line: string): { prefix: string; indent: string; marker: string; isStub: boolean } | null {
   const match = line.match(/^(\s*)([-*+]|(?:\d+\.))\s*(.*)$/);
@@ -158,6 +183,7 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     this.addSettingTab(new ObsidianAiLlmHelperSettingTab(this.app, this));
+    this.registerEditorExtension([highlightField]);
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass("obsidian-llm-helper-statusbar");
@@ -202,6 +228,23 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
     if (!this.statusBarEl) return;
     this.statusBarEl.toggleClass("obsidian-llm-helper-hidden", !on);
     if (on) this.statusBarEl.textContent = message;
+  }
+
+  private highlightRange(editor: Editor, fromOffset: number, toOffset: number): void {
+    const view = (editor as any).cm as EditorView | undefined;
+    if (!view) return;
+    const doc = view.state.doc;
+    const clamp = (n: number) => Math.max(0, Math.min(n, doc.length));
+    const from = clamp(Math.min(fromOffset, toOffset));
+    const to = clamp(Math.max(fromOffset, toOffset));
+    if (to <= from) return;
+
+    const spec: HighlightSpec = { from, to };
+    view.dispatch({ effects: addHighlightEffect.of(spec) });
+    window.setTimeout(() => {
+      if (!view.state.field(highlightField, false)) return;
+      view.dispatch({ effects: clearHighlightEffect.of(spec) });
+    }, 1200);
   }
 
   async runAiEdit(editor: Editor, mode: ApplyMode, userPrompt: string): Promise<void> {
@@ -265,8 +308,14 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
       this.setBusy(false);
     }
 
+    // Some local models may return literal "\n" sequences; normalize to real newlines if none exist.
+    if (!content.includes("\n") && content.includes("\\n")) {
+      content = content.replace(/\\n/g, "\n");
+    }
+
     if (mode === "replace") {
       editor.replaceSelection(content); // :contentReference[oaicite:6]{index=6}
+      this.highlightRange(editor, selStartOffset, selStartOffset + content.length);
       new Notice("Selection replaced. Undo with Cmd/Ctrl+Z.");
       return;
     }
@@ -291,10 +340,17 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
       const insertText = finalContent.endsWith("\n") ? finalContent : `${finalContent}\n`;
       if (currentLine.trim().length === 0 && toPos.line + 1 < docLines.length) {
         // Replace the blank line (including its newline) to avoid double spacing before the closing fence.
-        editor.replaceRange(insertText, { line: toPos.line, ch: 0 }, { line: toPos.line + 1, ch: 0 });
+        const from = { line: toPos.line, ch: 0 };
+        const to = { line: toPos.line + 1, ch: 0 };
+        editor.replaceRange(insertText, from, to);
+        const start = editor.posToOffset(from);
+        this.highlightRange(editor, start, start + insertText.length);
       } else {
         const targetLine = fenceBounds ? fenceBounds.end : toPos.line;
-        editor.replaceRange(insertText, { line: targetLine, ch: 0 });
+        const from = { line: targetLine, ch: 0 };
+        editor.replaceRange(insertText, from);
+        const start = editor.posToOffset(from);
+        this.highlightRange(editor, start, start + insertText.length);
       }
       new Notice("Text inserted. Undo with Cmd/Ctrl+Z.");
       return;
@@ -314,6 +370,8 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
       const replaceFrom = { line: toPos.line, ch: 0 };
       const replaceTo = { line: toPos.line, ch: currentLine.length };
       editor.replaceRange(cleaned, replaceFrom, replaceTo);
+      const start = editor.posToOffset(replaceFrom);
+      this.highlightRange(editor, start, start + cleaned.length);
       new Notice("Text inserted. Undo with Cmd/Ctrl+Z.");
       return;
     }
@@ -326,6 +384,8 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
         const replaceFrom = { line: toPos.line, ch: 0 };
         const replaceTo = { line: toPos.line, ch: currentLine.length };
         editor.replaceRange(finalContent, replaceFrom, replaceTo);
+        const start = editor.posToOffset(replaceFrom);
+        this.highlightRange(editor, start, start + finalContent.length);
         new Notice("Text inserted. Undo with Cmd/Ctrl+Z.");
         return;
       }
@@ -333,6 +393,8 @@ export default class ObsidianAiLlmHelperPlugin extends Plugin {
 
     // Insert at cursor or end-of-selection using replaceRange(pos). :contentReference[oaicite:7]{index=7}
     editor.replaceRange(finalContent, toPos);
+    const start = insertOffset;
+    this.highlightRange(editor, start, start + finalContent.length);
     new Notice("Text inserted. Undo with Cmd/Ctrl+Z.");
   }
 }

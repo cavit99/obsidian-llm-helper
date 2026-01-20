@@ -39,3 +39,42 @@
 .obsidian-llm-helper-input {
   width: 100%;
 }
+
+.obsidian-llm-helper-support {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.obsidian-llm-helper-support-img {
+  max-width: 180px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+.cm-content .obsidian-llm-helper-flash {
+  padding: 1px 0;
+  border-radius: 3px;
+  background-color: var(--text-highlight-bg, rgba(2, 122, 255, 0.16)) !important;
+  box-shadow: 0 0 0 1px rgba(var(--color-blue-rgb, 2, 122, 255), 0.28);
+  transition: background-color 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+}
+
+.theme-dark .cm-content .obsidian-llm-helper-flash {
+  background-color: rgba(var(--color-blue-rgb, 2, 122, 255), 0.14) !important;
+  box-shadow: 0 0 0 1px rgba(var(--color-blue-rgb, 2, 122, 255), 0.24);
+}
+
+.markdown-source-view.mod-cm6 .cm-editor .cm-content span.obsidian-llm-helper-flash {
+  animation: obsidian-llm-helper-flash-pulse 700ms ease-out 1;
+}
+
+@keyframes obsidian-llm-helper-flash-pulse {
+  0% {
+    filter: brightness(1.08);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}

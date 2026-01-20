@@ -5,7 +5,8 @@ const isProd = process.argv.includes("production");
 const ctx = await esbuild.context({
   entryPoints: ["src/main.ts"],
   bundle: true,
-  external: ["obsidian"],
+  // Keep CodeMirror/Lezer external so we use Obsidian's built-ins.
+  external: ["obsidian", "@codemirror/*", "@lezer/*"],
   format: "cjs",
   platform: "node",
   target: "es2018",
