@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
+import { requestUrl } from "obsidian";
 import type { ApplyMode, AiContextPayload } from "./types";
 
 function buildSystemInstructions(): string {
@@ -49,6 +50,40 @@ function toErrorMessage(err: unknown): string {
   return String(err);
 }
 
+function normalizeError(err: unknown): Error {
+  const anyErr = err as any;
+  const status =
+    anyErr?.status ??
+    anyErr?.httpStatus ??
+    anyErr?.statusCode ??
+    anyErr?.response?.status ??
+    anyErr?.response?.statusCode;
+  const code = anyErr?.code ?? anyErr?.error?.code ?? anyErr?.response?.data?.error?.code;
+  const detail =
+    anyErr?.error?.message ??
+    anyErr?.response?.data?.error?.message ??
+    anyErr?.response?.error?.message ??
+    anyErr?.message;
+  const name = anyErr?.name ?? anyErr?.constructor?.name;
+  const msg = toErrorMessage(err);
+
+  const authPatterns = /invalid api key|incorrect api key|authentication|unauthorized|auth failed|invalid authentication/i;
+
+  if (
+    status === 401 ||
+    code === "invalid_api_key" ||
+    name === "AuthenticationError" ||
+    authPatterns.test(msg) ||
+    authPatterns.test(detail ?? "")
+  ) {
+    return new Error(`Authentication failed. Check your API key and project/organization. (${detail ?? msg})`);
+  }
+  if (/connection error/i.test(msg)) {
+    return new Error(`Request failed. Check your API key and network/base URL. (${detail ?? msg})`);
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 function findRefusal(output: unknown): string | null {
   if (!Array.isArray(output)) return null;
   for (const item of output) {
@@ -65,68 +100,181 @@ function findRefusal(output: unknown): string | null {
   return null;
 }
 
+function stripCodeFences(text: string): string {
+  const fenced = text.trim();
+  if (fenced.startsWith("```") && fenced.endsWith("```")) {
+    return fenced.replace(/^```[a-zA-Z0-9]*\s*/, "").replace(/```$/, "").trim();
+  }
+  return text;
+}
+
+function isLocalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "localhost") return true;
+    if (parsed.hostname === "0.0.0.0") return true;
+    if (parsed.hostname === "127.0.0.1") return true;
+    if (parsed.hostname.startsWith("192.168.")) return true;
+    if (parsed.hostname.startsWith("10.")) return true;
+    // RFC1918 172.16.0.0 – 172.31.255.255
+    if (parsed.hostname.startsWith("172.")) {
+      const parts = parsed.hostname.split(".");
+      const second = Number(parts[1]);
+      if (!Number.isNaN(second) && second >= 16 && second <= 31) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function createClient(apiKey: string | undefined, baseURL: string): OpenAI {
   const key = apiKey?.trim();
-  return new OpenAI({ apiKey: key, baseURL, dangerouslyAllowBrowser: true });
+  return new OpenAI({
+    apiKey: key,
+    baseURL,
+    dangerouslyAllowBrowser: true,
+    fetch: async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      if (!isLocalUrl(url)) {
+        return fetch(input as Request | string, init);
+      }
+
+      let headers: Record<string, string> | undefined;
+      if (init?.headers) {
+        headers = {};
+        new Headers(init.headers as any).forEach((v, k) => {
+          headers![k] = v;
+        });
+      }
+      const res = await requestUrl({
+        url,
+        method: init?.method ?? "GET",
+        headers,
+        body: init?.body as any
+      });
+      const body = res.arrayBuffer ?? res.text ?? "";
+      return new Response(body, {
+        status: res.status,
+        statusText: (res as any).statusText ?? "",
+        headers: res.headers as Record<string, string>
+      });
+    }
+  });
 }
 
 async function callResponsesApi(apiKey: string | undefined, apiBaseUrl: string, model: string, payload: AiContextPayload): Promise<string> {
   const client = createClient(apiKey, apiBaseUrl);
-  const response = await client.responses.parse({
-    model,
-    input: [
-      { role: "system", content: buildSystemInstructions() },
-      { role: "user", content: buildUserMessage(payload) }
-    ],
-    text: {
-      format: zodTextFormat(ContentSchema, "obsidian_ai_llm_helper_edit")
-    },
-    prompt_cache_key: "obsidian_llm_helper_v1",
-    store: false
-  });
+  try {
+    const response = await client.responses.parse({
+      model,
+      input: [
+        { role: "system", content: buildSystemInstructions() },
+        { role: "user", content: buildUserMessage(payload) }
+      ],
+      text: {
+        format: zodTextFormat(ContentSchema, "obsidian_ai_llm_helper_edit")
+      },
+      prompt_cache_key: "obsidian_llm_helper_v1",
+      store: false
+    });
 
-  if (response.status === "incomplete") {
-    const reason = (response as any).incomplete_details?.reason;
-    throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
+    if (response.status === "incomplete") {
+      const reason = (response as any).incomplete_details?.reason;
+      throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
+    }
+    const refusal = findRefusal((response as any).output);
+    if (refusal) throw new Error(`Model refused the request: ${refusal}`);
+    const parsed = (response as any).output_parsed as z.infer<typeof ContentSchema> | undefined;
+    if (!parsed || typeof parsed.content !== "string") {
+      throw new Error("Model output missing content.");
+    }
+    return parsed.content;
+  } catch (err) {
+    throw normalizeError(err);
   }
-  const refusal = findRefusal((response as any).output);
-  if (refusal) throw new Error(`Model refused the request: ${refusal}`);
-  const parsed = (response as any).output_parsed as z.infer<typeof ContentSchema> | undefined;
-  if (!parsed || typeof parsed.content !== "string") {
-    throw new Error("Model output missing content.");
-  }
-  return parsed.content;
 }
 
 async function callResponsesApiJsonModeFallback(apiKey: string | undefined, apiBaseUrl: string, model: string, payload: AiContextPayload): Promise<string> {
   const client = createClient(apiKey, apiBaseUrl);
-  const response = await client.responses.create({
-    model,
-    input: [
-      {
-        role: "system",
-        content: buildSystemInstructions() + "\nIf you cannot follow schema, still output a single JSON object with key `content`."
+  try {
+    const response = await client.responses.create({
+      model,
+      input: [
+        {
+          role: "system",
+          content: buildSystemInstructions() + "\nIf you cannot follow schema, still output a single JSON object with key `content`."
+        },
+        { role: "user", content: buildUserMessage(payload) }
+      ],
+      text: { format: { type: "json_object" } },
+      prompt_cache_key: "obsidian_llm_helper_v1",
+      store: false
+    });
+
+    if (response.status === "incomplete") {
+      const reason = (response as any).incomplete_details?.reason;
+      throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
+    }
+
+    const refusal = findRefusal((response as any).output);
+    if (refusal) throw new Error(`Model refused the request: ${refusal}`);
+
+    const outputText = (response as any).output_text as string | undefined;
+    if (!outputText || !outputText.trim()) throw new Error("Empty model output.");
+
+    const parsed = ContentSchema.parse(JSON.parse(outputText));
+    return parsed.content;
+  } catch (err) {
+    throw normalizeError(err);
+  }
+}
+
+async function callLocalChatCompletions(apiBaseUrl: string, model: string, payload: AiContextPayload): Promise<string> {
+  const res = await requestUrl({
+    url: apiBaseUrl,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: buildSystemInstructions() },
+        { role: "user", content: buildUserMessage(payload) }
+      ],
+      temperature: 0.2,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "obsidian_ai_llm_helper_edit",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: { content: { type: "string" } },
+            required: ["content"]
+          }
+        }
       },
-      { role: "user", content: buildUserMessage(payload) }
-    ],
-    text: { format: { type: "json_object" } },
-    prompt_cache_key: "obsidian_llm_helper_v1",
-    store: false
+      stream: false
+    })
   });
 
-  if (response.status === "incomplete") {
-    const reason = (response as any).incomplete_details?.reason;
-    throw new Error(reason ? `Model response incomplete: ${reason}` : "Model response incomplete.");
+  if (res.status >= 400) {
+    throw new Error(res.text || `HTTP ${res.status}`);
   }
 
-  const refusal = findRefusal((response as any).output);
-  if (refusal) throw new Error(`Model refused the request: ${refusal}`);
-
-  const outputText = (response as any).output_text as string | undefined;
-  if (!outputText || !outputText.trim()) throw new Error("Empty model output.");
-
-  const parsed = ContentSchema.parse(JSON.parse(outputText));
-  return parsed.content;
+  const data = res.json ?? JSON.parse(res.text ?? "{}");
+  const choice = (data as any)?.choices?.[0]?.message?.content;
+  if (typeof choice === "string" && choice.trim()) {
+    const cleaned = stripCodeFences(choice).trim();
+    try {
+      const parsed = ContentSchema.parse(JSON.parse(cleaned));
+      return parsed.content;
+    } catch {
+      return cleaned;
+    }
+  }
+  throw new Error("Empty model output.");
 }
 
 export async function generateAiText(args: {
@@ -160,6 +308,9 @@ export async function generateAiText(args: {
   const apiBaseUrl = (args.apiBaseUrl ?? "").trim() || "https://api.openai.com/v1";
 
   try {
+    if (isLocalUrl(apiBaseUrl)) {
+      return await callLocalChatCompletions(apiBaseUrl, args.model, payload);
+    }
     return await callResponsesApi(args.apiKey, apiBaseUrl, args.model, payload);
   } catch (e: unknown) {
     const msg = toErrorMessage(e);
